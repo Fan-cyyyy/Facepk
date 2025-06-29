@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./Backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Backend:/app
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - ./Backend/.env
+    environment:
+      - DATABASE_URL=mysql+pymysql://user:password@db/face_score_pk
+      - REDIS_HOST=redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+      
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: face_score_pk
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:6.2-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    command: celery -A Backend.tasks.worker worker --loglevel=info
+    depends_on:
+      - db
+      - redis
+      - backend
+    volumes:
+      - ./Backend:/app
+    env_file:
+      - ./Backend/.env
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge

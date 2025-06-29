@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片测试</title>
+    <style>
+        .image-container {
+            margin: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        .image-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .image-box {
+            border: 1px solid #eee;
+            padding: 5px;
+        }
+        img {
+            max-width: 200px;
+            height: auto;
+            display: block;
+        }
+        .status {
+            margin-top: 5px;
+            font-size: 12px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>排行榜图片测试</h1>
+    
+    <div class="image-container">
+        <h2>直接路径测试</h2>
+        <div class="image-row">
+            <div class="image-box">
+                <img src="http://localhost:8000/uploads/1_02ab9c6c-702a-4336-b4ea-55e60dbc7398.jpg" 
+                     alt="图片1"
+                     onload="this.nextElementSibling.innerHTML='加载成功'; this.nextElementSibling.className='status success';"
+                     onerror="this.nextElementSibling.innerHTML='加载失败'; this.nextElementSibling.className='status error';">
+                <div class="status">加载中...</div>
+                <p>图片路径: /uploads/1_02ab9c6c-702a-4336-b4ea-55e60dbc7398.jpg</p>
+            </div>
+            
+            <div class="image-box">
+                <img src="http://localhost:8000/uploads/1_1eca3647-364c-4e22-bc9d-d452bf4a7642.jpg" 
+                     alt="图片2"
+                     onload="this.nextElementSibling.innerHTML='加载成功'; this.nextElementSibling.className='status success';"
+                     onerror="this.nextElementSibling.innerHTML='加载失败'; this.nextElementSibling.className='status error';">
+                <div class="status">加载中...</div>
+                <p>图片路径: /uploads/1_1eca3647-364c-4e22-bc9d-d452bf4a7642.jpg</p>
+            </div>
+            
+            <div class="image-box">
+                <img src="http://localhost:8000/uploads/1_4997bd4a-4c97-47c0-90bb-73cba64c35ef.jpg" 
+                     alt="图片3"
+                     onload="this.nextElementSibling.innerHTML='加载成功'; this.nextElementSibling.className='status success';"
+                     onerror="this.nextElementSibling.innerHTML='加载失败'; this.nextElementSibling.className='status error';">
+                <div class="status">加载中...</div>
+                <p>图片路径: /uploads/1_4997bd4a-4c97-47c0-90bb-73cba64c35ef.jpg</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 加载完成后显示状态信息
+        window.onload = () => {
+            console.log("页面加载完成，检查图片状态");
+        };
+    </script>
+</body>
+</html> 
