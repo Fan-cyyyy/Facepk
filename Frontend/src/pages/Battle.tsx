@@ -22,8 +22,8 @@ interface BattleUser {
   avatar?: string;
   score: number;
   image_url: string;
-  rank?: number;
-  score_id?: number;
+  rank: number;
+  score_id: number;
 }
 
 const Battle: React.FC = () => {
@@ -72,7 +72,9 @@ const Battle: React.FC = () => {
         username: `排行榜用户`,
         avatar: `/uploads/1_02ab9c6c-702a-4336-b4ea-55e60dbc7398.jpg`,
         score: 85.5,
-        image_url: `/uploads/1_02ab9c6c-702a-4336-b4ea-55e60dbc7398.jpg`
+        image_url: `/uploads/1_02ab9c6c-702a-4336-b4ea-55e60dbc7398.jpg`,
+        rank: 1,
+        score_id: 1
       };
       
       setOpponent(mockOpponent);
@@ -272,10 +274,10 @@ const Battle: React.FC = () => {
               size="large"
               icon={<TeamOutlined />}
               loading={searching}
-              onClick={searchOpponent}
+              onClick={viewRankings}
               className="mb-4"
             >
-              {searching ? '正在搜索对手' : '搜索对手'}
+              寻找对手
             </Button>
           </div>
         ) : (

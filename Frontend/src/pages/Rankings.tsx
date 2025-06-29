@@ -60,7 +60,7 @@ const Rankings: React.FC = () => {
       message.info('排行榜已更新');
     } else {
       // 正常加载
-      fetchRankings();
+    fetchRankings();
     }
   }, []);
 
@@ -82,20 +82,8 @@ const Rankings: React.FC = () => {
               <CrownOutlined />
             </div>
           );
-        } else if (rank === 2) {
-          return (
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-300 text-white mx-auto">
-              2
-            </div>
-          );
-        } else if (rank === 3) {
-          return (
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-700 text-white mx-auto">
-              3
-            </div>
-          );
         }
-        return <div className="text-center">{rank}</div>;
+        return <div className="text-center font-medium">{rank}</div>;
       }
     },
     {
@@ -104,8 +92,13 @@ const Rankings: React.FC = () => {
       key: 'username',
       render: (text: string, record: RankingUser) => (
         <div className="flex items-center">
-          <Avatar icon={<UserOutlined />} src={record.avatar} />
-          <span className="ml-2">{record.nickname || text}</span>
+          <Avatar 
+            icon={<UserOutlined />} 
+            src={record.avatar} 
+          />
+          <span className="ml-2">
+            {record.nickname || text}
+          </span>
         </div>
       )
     },
@@ -120,11 +113,11 @@ const Rankings: React.FC = () => {
               src={imageUrl.startsWith('http') ? imageUrl : `http://localhost:8000${imageUrl}`} 
               width={80} 
               height={80} 
-              className="object-cover rounded-md"
+              className="object-cover rounded-lg border border-gray-200"
               fallback={PLACEHOLDER_IMAGE}
             />
           ) : (
-            <div className="w-20 h-20 bg-gray-200 flex items-center justify-center rounded-md">
+            <div className="w-20 h-20 bg-gray-100 flex items-center justify-center rounded-lg border border-gray-200">
               <span className="text-gray-500 text-xs">无图片</span>
             </div>
           )}
@@ -136,7 +129,9 @@ const Rankings: React.FC = () => {
       dataIndex: 'highest_score',
       key: 'highest_score',
       render: (score: number) => (
-        <div className="text-lg font-bold">{score ? score.toFixed(1) : "0.0"}</div>
+        <div className="text-lg font-bold">
+          {score ? score.toFixed(1) : "0.0"}
+        </div>
       )
     },
     {
@@ -154,7 +149,7 @@ const Rankings: React.FC = () => {
       key: 'action',
       render: (_: any, record: RankingUser) => (
         <Button 
-          type="primary" 
+          type="primary"
           size="small"
           onClick={() => {
             navigate('/battle', { 
@@ -179,40 +174,42 @@ const Rankings: React.FC = () => {
   ];
 
   return (
-    <div>
-      <div className="bg-white p-4 rounded-lg shadow mb-4">
-        <h2 className="text-xl font-bold mb-4">颜值排行榜</h2>
-        <div className="flex justify-between mb-4">
-          <div>
-            <Button type="default" className="mr-2">颜值排名</Button>
-            <Button type="default">对战排名</Button>
-          </div>
-          <Button 
-            type="primary" 
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={loading}
-          >
-            刷新
-          </Button>
+    <div className="page-container">
+      <div className="bg-white rounded-lg shadow-sm mb-6">
+        <div className="px-6 py-4 border-b">
+          <h2 className="text-xl font-bold mb-0">颜值排行榜</h2>
         </div>
-        
-        <Spin spinning={loading} tip="加载中...">
-          <Table 
-            columns={columns} 
-            dataSource={rankings} 
-            rowKey="user_id" 
-            pagination={{
-              total: total,
-              current: currentPage,
-              pageSize: pageSize,
-              onChange: fetchRankings
-            }}
-            locale={{
-              emptyText: '暂无数据'
-            }}
-          />
-        </Spin>
+        <div className="p-4">
+          <div className="flex justify-end mb-4">
+            <Button 
+              type="primary"
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              loading={loading}
+            >
+              刷新
+            </Button>
+          </div>
+          
+          <Spin spinning={loading} tip="加载中...">
+            <Table 
+              columns={columns} 
+              dataSource={rankings} 
+              rowKey="user_id" 
+              pagination={{
+                total: total,
+                current: currentPage,
+                pageSize: pageSize,
+                onChange: fetchRankings
+              }}
+              locale={{
+                emptyText: '暂无数据'
+              }}
+              className="rankings-table"
+              rowClassName={(record) => record.rank <= 3 ? `rank-${record.rank}` : ''}
+            />
+          </Spin>
+        </div>
       </div>
     </div>
   );

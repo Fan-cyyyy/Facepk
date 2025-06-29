@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
-import { Typography, Button, Card, Row, Col, Statistic } from 'antd';
+import { Typography, Button, Card, Row, Col } from 'antd';
 import { Link } from 'react-router-dom';
-import { CameraOutlined, ThunderboltOutlined, TrophyOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
+import { CameraOutlined, ThunderboltOutlined, TrophyOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 
 const { Title, Paragraph } = Typography;
@@ -54,7 +54,7 @@ const Home: React.FC = () => {
 
       {/* 功能介绍 */}
       <Row gutter={[24, 24]} className="mb-12">
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8}>
           <Card className="card-shadow h-full text-center">
             <CameraOutlined className="text-4xl text-primary mb-4" />
             <Title level={4}>颜值打分</Title>
@@ -63,7 +63,7 @@ const Home: React.FC = () => {
             </Paragraph>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8}>
           <Card className="card-shadow h-full text-center">
             <ThunderboltOutlined className="text-4xl text-primary mb-4" />
             <Title level={4}>PK对战</Title>
@@ -72,7 +72,7 @@ const Home: React.FC = () => {
             </Paragraph>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8}>
           <Card className="card-shadow h-full text-center">
             <TrophyOutlined className="text-4xl text-primary mb-4" />
             <Title level={4}>排行榜</Title>
@@ -81,34 +81,7 @@ const Home: React.FC = () => {
             </Paragraph>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card className="card-shadow h-full text-center">
-            <TeamOutlined className="text-4xl text-primary mb-4" />
-            <Title level={4}>社交分享</Title>
-            <Paragraph>
-              一键分享您的颜值成绩和PK战绩，邀请好友共同参与互动
-            </Paragraph>
-          </Card>
-        </Col>
       </Row>
-
-      {/* 数据统计 */}
-      <Card className="card-shadow mb-12">
-        <Row gutter={48} justify="center">
-          <Col xs={12} md={6}>
-            <Statistic title="用户总数" value={10238} />
-          </Col>
-          <Col xs={12} md={6}>
-            <Statistic title="评分次数" value={283912} />
-          </Col>
-          <Col xs={12} md={6}>
-            <Statistic title="PK对战" value={41298} />
-          </Col>
-          <Col xs={12} md={6}>
-            <Statistic title="平均分" value={78.5} precision={1} suffix="分" />
-          </Col>
-        </Row>
-      </Card>
 
       {/* 使用说明 */}
       <Title level={2} className="text-center mb-8">如何使用</Title>
@@ -142,7 +115,7 @@ const Home: React.FC = () => {
               <Title level={4} className="m-0">参与PK</Title>
             </div>
             <Paragraph>
-              选择好友或随机对手发起PK挑战，赢取积分提升排名，分享结果到社交平台
+              选择好友或随机对手发起PK挑战，赢取积分提升排名，争夺颜值巅峰
             </Paragraph>
           </Card>
         </Col>
