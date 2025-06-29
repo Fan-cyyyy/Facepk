@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Button, Typography, Avatar, Spin, message, Progress, Row, Col, Divider, Upload, Modal, Image } from 'antd';
-import { UserOutlined, TrophyOutlined, FireOutlined, TeamOutlined, RocketOutlined, UploadOutlined } from '@ant-design/icons';
+import { UserOutlined, TrophyOutlined, FireOutlined, TeamOutlined, RocketOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
 import { uploadAndScore } from '../services/api';
@@ -24,6 +24,7 @@ interface BattleUser {
   image_url: string;
   rank: number;
   score_id: number;
+  beauty?: number;
 }
 
 const Battle: React.FC = () => {
@@ -45,11 +46,26 @@ const Battle: React.FC = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [userScore, setUserScore] = useState<any | null>(null);
   
+  // 摄像头相关状态
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  
+  // 监听对手信息变化
+  useEffect(() => {
+    if (opponent) {
+      console.log('对手信息已更新:', opponent);
+    }
+  }, [opponent]);
+  
   // 从路由参数中获取对手信息
   useEffect(() => {
     // 检查location.state中是否包含对手信息
     if (location.state && location.state.opponent) {
-      setOpponent(location.state.opponent);
+      const opponentData = location.state.opponent;
+      console.log('从路由获取的对手信息:', opponentData);
+      setOpponent(opponentData);
     }
   }, [location]);
   
@@ -97,20 +113,97 @@ const Battle: React.FC = () => {
     setShowUploadModal(false);
     setImageFile(null);
     setPreviewImage(null);
+    stopCamera();
   };
   
   // 处理文件选择
   const handleFileSelect = (info: any) => {
-    if (info.file) {
-      const file = info.file.originFileObj || info.file;
-      setImageFile(file);
+    // 这里只是为了接口完整性，实际上传在beforeUpload中处理
+    console.log('文件选择:', info);
+  };
+  
+  // 打开摄像头
+  const openCamera = async () => {
+    try {
+      setShowCamera(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
       
-      // 创建预览
-      const reader = new FileReader();
-      reader.onload = () => {
-        setPreviewImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('无法访问摄像头:', error);
+      message.error('无法访问摄像头，请确保已授予权限');
+      setShowCamera(false);
+    }
+  };
+  
+  // 关闭摄像头
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setShowCamera(false);
+  };
+  
+  // 拍照
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // 获取视频尺寸
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      
+      // 计算正方形裁剪区域（取最小边作为边长）
+      const size = Math.min(videoWidth, videoHeight);
+      const offsetX = (videoWidth - size) / 2;
+      const offsetY = (videoHeight - size) / 2;
+      
+      // 设置canvas尺寸为正方形
+      canvas.width = size;
+      canvas.height = size;
+      
+      // 在canvas上绘制当前视频帧（裁剪为正方形）
+      const context = canvas.getContext('2d');
+      if (context) {
+        // 清除画布
+        context.clearRect(0, 0, size, size);
+        
+        // 创建圆形裁剪区域
+        context.beginPath();
+        context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2, true);
+        context.closePath();
+        context.clip();
+        
+        // 绘制视频帧到圆形区域
+        context.drawImage(
+          video,
+          offsetX, offsetY, size, size,  // 源图像的裁剪区域
+          0, 0, size, size               // 目标区域
+        );
+        
+        // 将canvas内容转换为图片
+        canvas.toBlob((blob) => {
+          if (blob) {
+            // 创建File对象
+            const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+            setImageFile(file);
+            
+            // 创建预览URL
+            const previewUrl = URL.createObjectURL(blob);
+            setPreviewImage(previewUrl);
+            
+            // 关闭摄像头
+            stopCamera();
+            
+            message.success('照片拍摄成功');
+          }
+        }, 'image/jpeg', 0.95);
+      }
     }
   };
   
@@ -139,7 +232,8 @@ const Battle: React.FC = () => {
       const userScoreData = {
         ...scoreResult,
         face_score: scoreResult.face_score || 0,
-        image_url: scoreResult.image_url || ''
+        image_url: scoreResult.image_url || '',
+        beauty: scoreResult.feature_highlights?.beauty || 0
       };
       
       setUserScore(userScoreData);
@@ -188,13 +282,32 @@ const Battle: React.FC = () => {
           setProgress(100);
           
           if (matchResult.success) {
+            // 输出对战结果中的对手信息
+            console.log('对战结果中的对手信息:', matchResult.opponent);
+            
             // 根据返回的结果设置对战结果
             if (matchResult.result === 'Win') {
               setBattleResult('win');
+              console.log('对战胜利 - 我的分数:', userScoreData.face_score, '对手分数:', opponent.score);
             } else if (matchResult.result === 'Lose') {
               setBattleResult('lose');
-            } else {
+              console.log('对战失败 - 我的分数:', userScoreData.face_score, '对手分数:', opponent.score);
+            } else if (matchResult.result === 'Tie') {
               setBattleResult('draw');
+              console.log('对战平局 - 我的分数:', userScoreData.face_score, '对手分数:', opponent.score);
+            }
+            
+            // 更新对手信息，包括beauty值
+            if (matchResult.opponent && matchResult.opponent.beauty !== undefined) {
+              console.log('更新对手beauty值:', matchResult.opponent.beauty);
+              // 使用函数式更新，确保获取最新的state
+              setOpponent(prevOpponent => {
+                if (!prevOpponent) return matchResult.opponent;
+                return {
+                  ...prevOpponent,
+                  beauty: matchResult.opponent.beauty
+                };
+              });
             }
             
             // 更新用户排名信息
@@ -204,14 +317,6 @@ const Battle: React.FC = () => {
                 rank: matchResult.new_rating ? matchResult.new_rating : userScore.rank
               });
             }
-            
-            // 3秒后导航到排行榜页面
-            setTimeout(() => {
-              message.success('PK完成，正在跳转到排行榜...');
-              // 设置一个标志，表示需要刷新排行榜
-              sessionStorage.setItem('refreshRankings', 'true');
-              navigate('/rankings');
-            }, 3000);
           } else {
             message.error(matchResult.error || 'PK失败');
           }
@@ -247,6 +352,49 @@ const Battle: React.FC = () => {
   // 查看排行榜
   const viewRankings = () => {
     navigate('/rankings');
+  };
+  
+  // 显示对战结果
+  const renderBattleResult = () => {
+    if (!battleResult || !userScore || !opponent) return null;
+    
+    // 获取双方分数，保留两位小数
+    const myScore = parseFloat(userScore.face_score).toFixed(1);
+    const opponentScore = parseFloat(opponent.score).toFixed(1);
+    
+    // 获取beauty值
+    const myBeauty = userScore.beauty !== undefined ? parseFloat(userScore.beauty).toFixed(1) : '未知';
+    const opponentBeauty = opponent.beauty !== undefined ? parseFloat(opponent.beauty).toFixed(1) : '未知';
+    
+    console.log('渲染对战结果，对手beauty值:', opponent.beauty, '格式化后:', opponentBeauty);
+    
+    return (
+      <div className="my-4 text-center">
+        <div className={`p-4 rounded-lg ${
+          battleResult === 'win' ? 'bg-green-50 text-green-600' : 
+          battleResult === 'lose' ? 'bg-red-50 text-red-600' : 
+          'bg-yellow-50 text-yellow-600'
+        }`}>
+          <Title level={3}>
+            {battleResult === 'win' ? '恭喜，你赢了！' : 
+             battleResult === 'lose' ? '很遗憾，你输了！' : 
+             '平局！'}
+          </Title>
+          <p>
+            {battleResult === 'win' ? `你的颜值评分(${myScore})高于对手(${opponentScore})！` : 
+             battleResult === 'lose' ? `对手的颜值评分(${opponentScore})高于你(${myScore})！` : 
+             `你们的颜值评分相同(${myScore})！`}
+          </p>
+          <p className="mt-2">
+            <small>
+              百度AI Beauty值: 你({myBeauty}) vs 对手({opponentBeauty})
+              <br/>
+              <span className="text-gray-500">*实际对战结果基于Beauty值判定</span>
+            </small>
+          </p>
+        </div>
+      </div>
+    );
   };
   
   return (
@@ -289,13 +437,23 @@ const Battle: React.FC = () => {
                     <Image 
                       width={150}
                       height={150}
-                      style={{ objectFit: 'cover' }}
+                      style={{ objectFit: 'cover', borderRadius: '50%' }}
                       src={userScore.image_url ? (userScore.image_url.startsWith('http') ? userScore.image_url : `http://localhost:8000${userScore.image_url}`) : ''}
                       fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFeAJ5hVqKIwAAAABJRU5ErkJggg=="
                     />
                     <div className="mt-2">
                       <Title level={5}>评分: {userScore.face_score}</Title>
-                      <Title level={5}>排名: {userScore.rank || '计算中'}</Title>
+                      {userScore.beauty !== undefined && (
+                        <p className="text-sm">Beauty: {userScore.beauty}</p>
+                      )}
+                      {userScore.feature_highlights && (
+                        <div className="mt-2 text-sm text-left">
+                          <p>年龄: {userScore.feature_highlights.age}</p>
+                          <p>性别: {userScore.feature_highlights.gender === 'male' ? '男' : '女'}</p>
+                          <p>脸型: {userScore.feature_highlights.face_shape}</p>
+                          <p>表情: {userScore.feature_highlights.expression}</p>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -319,12 +477,15 @@ const Battle: React.FC = () => {
                     <Image 
                       width={150}
                       height={150}
-                      style={{ objectFit: 'cover' }}
+                      style={{ objectFit: 'cover', borderRadius: '50%' }}
                       src={opponent.image_url.startsWith('http') ? opponent.image_url : `http://localhost:8000${opponent.image_url}`}
                       fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFeAJ5hVqKIwAAAABJRU5ErkJggg=="
                     />
                     <div className="mt-2">
                       <Title level={5}>对手评分: {opponent.score}</Title>
+                      {opponent.beauty !== undefined && (
+                        <p className="text-sm">Beauty: {opponent.beauty}</p>
+                      )}
                       <Title level={5}>对手排名: {opponent.rank}</Title>
                     </div>
                   </div>
@@ -340,26 +501,7 @@ const Battle: React.FC = () => {
               </div>
             )}
             
-            {battleResult && (
-              <div className="my-4 text-center">
-                <div className={`p-4 rounded-lg ${
-                  battleResult === 'win' ? 'bg-green-50 text-green-600' : 
-                  battleResult === 'lose' ? 'bg-red-50 text-red-600' : 
-                  'bg-yellow-50 text-yellow-600'
-                }`}>
-                  <Title level={3}>
-                    {battleResult === 'win' ? '恭喜，你赢了！' : 
-                     battleResult === 'lose' ? '很遗憾，你输了！' : 
-                     '平局！'}
-                  </Title>
-                  <p>
-                    {battleResult === 'win' ? '你的颜值评分高于对手！' : 
-                     battleResult === 'lose' ? '对手的颜值评分高于你！' : 
-                     '你们的颜值评分相同！'}
-                  </p>
-                </div>
-              </div>
-            )}
+            {battleResult && renderBattleResult()}
             
             <Divider />
             <div className="text-center py-8">
@@ -424,42 +566,121 @@ const Battle: React.FC = () => {
             上传并开始PK
           </Button>,
         ]}
+        width={600}
       >
-        <Dragger
-          name="file"
-          multiple={false}
-          showUploadList={false}
-          beforeUpload={(file) => {
-            setImageFile(file);
-            // 创建预览
-            const reader = new FileReader();
-            reader.onload = () => {
-              setPreviewImage(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-            return false; // 阻止自动上传
-          }}
-          onChange={handleFileSelect}
-          accept="image/jpeg,image/png,image/jpg"
-        >
-          <p className="ant-upload-drag-icon">
-            <UploadOutlined />
-          </p>
-          <p className="ant-upload-text">点击或拖拽照片到此区域上传</p>
-          <p className="ant-upload-hint">
-            支持单张图片上传，请选择清晰的正面照片
-          </p>
-        </Dragger>
-        
-        {previewImage && (
-          <div className="mt-4 text-center">
-            <h4>预览</h4>
-            <Image
-              src={previewImage}
-              alt="预览"
-              style={{ maxWidth: '100%', maxHeight: '200px' }}
-            />
+        {showCamera ? (
+          <div className="text-center">
+            <div className="mb-4 flex justify-center">
+              <div 
+                className="relative rounded-full overflow-hidden border-4 border-primary shadow-lg"
+                style={{ 
+                  width: '350px', 
+                  height: '350px',
+                  background: '#f0f0f0'
+                }}
+              >
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  style={{ 
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+                <div 
+                  className="absolute inset-0 rounded-full"
+                  style={{ 
+                    boxShadow: 'inset 0 0 10px rgba(0,0,0,0.2)',
+                    border: '1px solid rgba(255,255,255,0.3)'
+                  }}
+                ></div>
+              </div>
+            </div>
+            <div className="mb-4">
+              <Button 
+                type="primary" 
+                icon={<CameraOutlined />} 
+                onClick={takePhoto}
+                className="mr-2"
+                size="large"
+              >
+                拍照
+              </Button>
+              <Button 
+                onClick={stopCamera}
+                size="large"
+              >
+                取消
+              </Button>
+            </div>
+            {/* 隐藏的canvas用于拍照 */}
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
+        ) : (
+          <>
+            <div className="mb-4 text-center">
+              <Button 
+                type="primary" 
+                icon={<CameraOutlined />} 
+                onClick={openCamera}
+                className="mb-4"
+                size="large"
+              >
+                使用摄像头
+              </Button>
+              <p className="text-gray-500 mb-4">或者</p>
+            </div>
+            
+            <Dragger
+              name="file"
+              multiple={false}
+              showUploadList={false}
+              beforeUpload={(file) => {
+                setImageFile(file);
+                // 创建预览
+                const reader = new FileReader();
+                reader.onload = () => {
+                  setPreviewImage(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+                return false; // 阻止自动上传
+              }}
+              onChange={handleFileSelect}
+              accept="image/jpeg,image/png,image/jpg"
+            >
+              <p className="ant-upload-drag-icon">
+                <UploadOutlined />
+              </p>
+              <p className="ant-upload-text">点击或拖拽照片到此区域上传</p>
+              <p className="ant-upload-hint">
+                支持单张图片上传，请选择清晰的正面照片
+              </p>
+            </Dragger>
+            
+            {previewImage && (
+              <div className="mt-4 text-center">
+                <h4>预览</h4>
+                <div className="flex justify-center">
+                  <Image
+                    src={previewImage}
+                    alt="预览"
+                    style={{ 
+                      maxWidth: '200px', 
+                      maxHeight: '200px', 
+                      borderRadius: '50%',
+                      objectFit: 'cover'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Modal>
     </div>

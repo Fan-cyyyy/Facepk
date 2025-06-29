@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Avatar, Image, Spin, message } from 'antd';
 import { UserOutlined, CrownOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getGlobalRankings } from '../services/api';
@@ -27,10 +27,20 @@ const Rankings: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  // 用于存储已加载的图片缓存键
+  const [loadedImageKeys, setLoadedImageKeys] = useState<Set<string>>(new Set());
+
+  // 清除图片缓存的函数
+  const clearImageCache = useCallback(() => {
+    setLoadedImageKeys(new Set());
+  }, []);
 
   const fetchRankings = async (page = 1, limit = 10) => {
     setLoading(true);
     try {
+      // 在获取新数据前清除图片缓存
+      clearImageCache();
+      
       const response = await getGlobalRankings(page, limit);
       console.log('排行榜响应:', response); // 添加调试日志
       
@@ -60,13 +70,25 @@ const Rankings: React.FC = () => {
       message.info('排行榜已更新');
     } else {
       // 正常加载
-    fetchRankings();
+      fetchRankings();
     }
   }, []);
 
   const handleRefresh = () => {
     fetchRankings(currentPage, pageSize);
     message.success('数据已刷新');
+  };
+
+  // 处理分页变化
+  const handlePageChange = (page: number, pageSize?: number) => {
+    // 在页面切换时清除图片缓存
+    clearImageCache();
+    fetchRankings(page, pageSize || 10);
+  };
+
+  // 生成唯一的图片键，用于缓存控制
+  const getImageKey = (imageUrl: string, rank: number) => {
+    return `${imageUrl}_${rank}_${currentPage}`;
   };
 
   const columns = [
@@ -76,6 +98,7 @@ const Rankings: React.FC = () => {
       key: 'rank',
       width: 80,
       render: (rank: number) => {
+        // 只有全局排名第一的用户显示皇冠图标，而不是每页的第一个
         if (rank === 1) {
           return (
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500 text-white mx-auto">
@@ -106,23 +129,29 @@ const Rankings: React.FC = () => {
       title: '照片',
       dataIndex: 'image_url',
       key: 'image',
-      render: (imageUrl: string) => (
-        <div className="flex flex-col items-center">
-          {imageUrl ? (
-            <Image 
-              src={imageUrl.startsWith('http') ? imageUrl : `http://localhost:8000${imageUrl}`} 
-              width={80} 
-              height={80} 
-              className="object-cover rounded-lg border border-gray-200"
-              fallback={PLACEHOLDER_IMAGE}
-            />
-          ) : (
-            <div className="w-20 h-20 bg-gray-100 flex items-center justify-center rounded-lg border border-gray-200">
-              <span className="text-gray-500 text-xs">无图片</span>
-            </div>
-          )}
-        </div>
-      )
+      render: (imageUrl: string, record: RankingUser) => {
+        // 为每个图片生成唯一的键
+        const imageKey = getImageKey(imageUrl, record.rank);
+        
+        return (
+          <div className="flex flex-col items-center">
+            {imageUrl ? (
+              <Image 
+                src={imageUrl.startsWith('http') ? imageUrl : `http://localhost:8000${imageUrl}?t=${Date.now()}`} 
+                width={80} 
+                height={80} 
+                className="object-cover rounded-lg border border-gray-200"
+                fallback={PLACEHOLDER_IMAGE}
+                key={imageKey} // 添加唯一键，确保页面切换时重新加载图片
+              />
+            ) : (
+              <div className="w-20 h-20 bg-gray-100 flex items-center justify-center rounded-lg border border-gray-200">
+                <span className="text-gray-500 text-xs">无图片</span>
+              </div>
+            )}
+          </div>
+        );
+      }
     },
     {
       title: '分数',
@@ -195,12 +224,13 @@ const Rankings: React.FC = () => {
             <Table 
               columns={columns} 
               dataSource={rankings} 
-              rowKey="user_id" 
+              rowKey={(record) => `${record.user_id}_${record.rank}_${currentPage}`} 
               pagination={{
                 total: total,
                 current: currentPage,
                 pageSize: pageSize,
-                onChange: fetchRankings
+                onChange: handlePageChange,
+                showSizeChanger: true
               }}
               locale={{
                 emptyText: '暂无数据'

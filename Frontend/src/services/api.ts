@@ -105,6 +105,7 @@ export interface MatchUser {
   avatar_url?: string;
   score: number;
   image_url: string;
+  beauty?: number;
 }
 
 // 对战结果
@@ -174,10 +175,16 @@ export const getUserScores = async (
  * @returns 排行榜数据
  */
 export const getGlobalRankings = async (page: number = 1, limit: number = 10) => {
-  // 添加时间戳参数，避免缓存
+  // 添加时间戳和随机数参数，确保每次请求都是全新的
   const timestamp = new Date().getTime();
+  const randomStr = Math.random().toString(36).substring(2, 15);
   return api.get('/rankings/global', {
-    params: { page, limit, t: timestamp }
+    params: { page, limit, t: timestamp, r: randomStr },
+    headers: {
+      'Cache-Control': 'no-cache, no-store',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    }
   });
 };
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Upload, Button, Card, Typography, Rate, Progress, Spin, message, Row, Col, Divider } from 'antd';
+import React, { useState, useRef } from 'react';
+import { Upload, Button, Card, Typography, Rate, Progress, Spin, message, Row, Col, Divider, Modal, Image } from 'antd';
 import { UploadOutlined, CameraOutlined, RocketOutlined, InboxOutlined } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
@@ -18,6 +18,12 @@ const Scoring: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scoreDetails, setScoreDetails] = useState<ScoreDetail[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  
+  // 摄像头相关状态
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // 处理上传图片
   const handleUpload = (info: any) => {
@@ -95,10 +101,89 @@ const Scoring: React.FC = () => {
     }
   };
 
-  // 拍照功能
-  const handleCapture = () => {
-    // 实际项目中应该调用摄像头API
-    message.info('摄像头功能开发中...');
+  // 打开摄像头
+  const openCamera = async () => {
+    try {
+      setShowCameraModal(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('无法访问摄像头:', error);
+      message.error('无法访问摄像头，请确保已授予权限');
+      setShowCameraModal(false);
+    }
+  };
+  
+  // 关闭摄像头
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setShowCameraModal(false);
+  };
+  
+  // 拍照
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // 获取视频尺寸
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      
+      // 计算正方形裁剪区域（取最小边作为边长）
+      const size = Math.min(videoWidth, videoHeight);
+      const offsetX = (videoWidth - size) / 2;
+      const offsetY = (videoHeight - size) / 2;
+      
+      // 设置canvas尺寸为正方形
+      canvas.width = size;
+      canvas.height = size;
+      
+      // 在canvas上绘制当前视频帧（裁剪为正方形）
+      const context = canvas.getContext('2d');
+      if (context) {
+        // 清除画布
+        context.clearRect(0, 0, size, size);
+        
+        // 创建圆形裁剪区域
+        context.beginPath();
+        context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2, true);
+        context.closePath();
+        context.clip();
+        
+        // 绘制视频帧到圆形区域
+        context.drawImage(
+          video,
+          offsetX, offsetY, size, size,  // 源图像的裁剪区域
+          0, 0, size, size               // 目标区域
+        );
+        
+        // 将canvas内容转换为图片
+        canvas.toBlob((blob) => {
+          if (blob) {
+            // 创建File对象
+            const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+            setImageFile(file);
+            
+            // 创建预览URL
+            const previewUrl = URL.createObjectURL(blob);
+            setImageUrl(previewUrl);
+            
+            // 关闭摄像头
+            stopCamera();
+            
+            message.success('照片拍摄成功');
+          }
+        }, 'image/jpeg', 0.95);
+      }
+    }
   };
 
   // 拖拽上传配置
@@ -149,12 +234,15 @@ const Scoring: React.FC = () => {
                 <img 
                   src={imageUrl} 
                   alt="上传的照片" 
-                  className="max-w-full h-auto mx-auto rounded-lg shadow-sm"
-                  style={{ maxHeight: '300px' }}
+                  className="max-w-full h-auto mx-auto rounded-full shadow-sm"
+                  style={{ maxHeight: '300px', objectFit: 'cover' }}
                 />
                 <div className="mt-4">
                   <Button 
-                    onClick={() => setImageUrl(null)} 
+                    onClick={() => {
+                      setImageUrl(null);
+                      setImageFile(null);
+                    }} 
                     size="small"
                   >
                     重新上传
@@ -173,9 +261,9 @@ const Scoring: React.FC = () => {
               </Dragger>
             )}
             
-            <div className="flex justify-center space-x-4">
+            <div className="text-center mt-4">
               {!imageUrl && (
-                <>
+                <div className="space-x-4">
                   <Upload
                     name="avatar"
                     showUploadList={false}
@@ -198,7 +286,7 @@ const Scoring: React.FC = () => {
                       return true;
                     }}
                   >
-                    <Button icon={<UploadOutlined />} size="large">
+                    <Button icon={<UploadOutlined />} size="large" className="mr-4">
                       选择照片
                     </Button>
                   </Upload>
@@ -206,11 +294,11 @@ const Scoring: React.FC = () => {
                   <Button 
                     icon={<CameraOutlined />} 
                     size="large"
-                    onClick={handleCapture}
+                    onClick={openCamera}
                   >
                     拍照
                   </Button>
-                </>
+                </div>
               )}
             </div>
             
@@ -271,6 +359,69 @@ const Scoring: React.FC = () => {
           </Card>
         </Col>
       </Row>
+      
+      {/* 摄像头模态框 */}
+      <Modal
+        title="拍摄照片"
+        open={showCameraModal}
+        onCancel={stopCamera}
+        footer={null}
+        width={600}
+      >
+        <div className="text-center">
+          <div className="mb-4 flex justify-center">
+            <div 
+              className="relative rounded-full overflow-hidden border-4 border-primary shadow-lg"
+              style={{ 
+                width: '350px', 
+                height: '350px',
+                background: '#f0f0f0'
+              }}
+            >
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                style={{ 
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+              <div 
+                className="absolute inset-0 rounded-full"
+                style={{ 
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.3)'
+                }}
+              ></div>
+            </div>
+          </div>
+          <div className="mb-4">
+            <Button 
+              type="primary" 
+              icon={<CameraOutlined />} 
+              onClick={takePhoto}
+              className="mr-2"
+              size="large"
+            >
+              拍照
+            </Button>
+            <Button 
+              onClick={stopCamera}
+              size="large"
+            >
+              取消
+            </Button>
+          </div>
+          {/* 隐藏的canvas用于拍照 */}
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+        </div>
+      </Modal>
     </div>
   );
 };

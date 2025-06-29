@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
 import math
+import json
 
 from models.match import Match, MatchResult
 from models.score import Score
@@ -39,23 +40,43 @@ class MatchService:
             if not opponent_score:
                 return {"success": False, "error": "找不到对手的公开评分记录"}
             
-            # 设置浮点数比较的容忍度
-            TOLERANCE = 0.0001
+            # 设置浮点数比较的容忍度 - 减小容忍度，确保只有完全相同的分数才会判定为平局
+            TOLERANCE = 0.00001
             
-            # 确定胜负，添加浮点数比较容忍度
-            if challenger_score.face_score - opponent_score.face_score > TOLERANCE:
-                result = MatchResult.WIN
-                points_changed = 15  # 简单起见，固定加减分
-            elif opponent_score.face_score - challenger_score.face_score > TOLERANCE:
-                result = MatchResult.LOSE
-                points_changed = -10
-            else:
+            # 从feature_data中获取beauty值
+            challenger_feature_data = challenger_score.feature_data
+            opponent_feature_data = opponent_score.feature_data
+            
+            # 输出原始特征数据，便于调试
+            logger.info(f"挑战者特征数据: {json.dumps(challenger_feature_data, ensure_ascii=False)}")
+            logger.info(f"对手特征数据: {json.dumps(opponent_feature_data, ensure_ascii=False)}")
+            
+            # 获取beauty值，确保类型正确
+            challenger_beauty = float(challenger_feature_data.get("beauty", 0)) if challenger_feature_data else 0
+            opponent_beauty = float(opponent_feature_data.get("beauty", 0)) if opponent_feature_data else 0
+            
+            # 确定胜负，使用beauty值而不是face_score
+            challenger_beauty_val = float(challenger_beauty)
+            opponent_beauty_val = float(opponent_beauty)
+            
+            # 输出日志，便于调试
+            logger.info(f"PK对战：挑战者beauty={challenger_beauty_val}，对手beauty={opponent_beauty_val}")
+            logger.info(f"PK对战：挑战者face_score={challenger_score.face_score}，对手face_score={opponent_score.face_score}")
+            logger.info(f"Beauty差值: {challenger_beauty_val - opponent_beauty_val}")
+            
+            if abs(challenger_beauty_val - opponent_beauty_val) < TOLERANCE:
                 # 分数差异在容忍度范围内，视为平局
                 result = MatchResult.TIE
                 points_changed = 3
-            
-            # 输出日志，便于调试
-            logger.info(f"PK对战：挑战者分数={challenger_score.face_score}，对手分数={opponent_score.face_score}，结果={result.value}")
+                logger.info("判定结果：平局")
+            elif challenger_beauty_val > opponent_beauty_val:
+                result = MatchResult.WIN
+                points_changed = 15  # 简单起见，固定加减分
+                logger.info("判定结果：胜利")
+            else:
+                result = MatchResult.LOSE
+                points_changed = -10
+                logger.info("判定结果：失败")
             
             # 更新用户分数
             challenger = self.db.query(User).filter(User.user_id == challenger_id).first()
@@ -103,14 +124,16 @@ class MatchService:
                     "username": challenger.username,
                     "avatar_url": challenger.avatar_url,
                     "score": challenger_score.face_score,
-                    "image_url": challenger_score.image_url
+                    "image_url": challenger_score.image_url,
+                    "beauty": challenger_beauty_val
                 },
                 "opponent": {
                     "user_id": opponent.user_id,
                     "username": opponent.username,
                     "avatar_url": opponent.avatar_url,
                     "score": opponent_score.face_score,
-                    "image_url": opponent_score.image_url
+                    "image_url": opponent_score.image_url,
+                    "beauty": opponent_beauty_val
                 },
                 "result": match_record.result.value,
                 "points_change": points_changed,
@@ -123,83 +146,96 @@ class MatchService:
             logger.error(f"创建对战异常: {e}")
             return {"success": False, "error": str(e)}
     
-    def get_user_matches(self, user_id: int, page: int = 1, limit: int = 10, result: Optional[str] = None) -> Dict:
+    async def get_match_history(self, user_id: int, page: int = 1, limit: int = 10) -> Dict:
         """获取用户的对战历史"""
         try:
-            # 构建查询
-            query = self.db.query(Match).filter(
+            # 计算分页
+            offset = (page - 1) * limit
+            
+            # 查询用户参与的所有对战（作为挑战者或被挑战者）
+            matches = self.db.query(Match).filter(
                 or_(
                     Match.challenger_id == user_id,
                     Match.opponent_id == user_id
                 )
-            )
+            ).order_by(desc(Match.matched_at)).offset(offset).limit(limit).all()
             
-            # 按结果过滤
-            if result:
-                try:
-                    match_result = MatchResult(result)
-                    query = query.filter(Match.result == match_result)
-                except ValueError:
-                    pass
+            # 获取总数
+            total = self.db.query(Match).filter(
+                or_(
+                    Match.challenger_id == user_id,
+                    Match.opponent_id == user_id
+                )
+            ).count()
             
-            # 计算总数
-            total = query.count()
-            
-            # 分页
-            matches = query.order_by(desc(Match.matched_at)).offset((page - 1) * limit).limit(limit).all()
-            
-            # 构建响应
-            data = []
+            # 处理结果
+            results = []
             for match in matches:
-                # 判断当前用户是挑战者还是被挑战者
-                is_challenger = match.challenger_id == user_id
+                # 获取挑战者和对手信息
+                challenger = self.db.query(User).filter(User.user_id == match.challenger_id).first()
+                opponent = self.db.query(User).filter(User.user_id == match.opponent_id).first()
                 
-                # 获取对手信息
-                opponent_id = match.opponent_id if is_challenger else match.challenger_id
-                opponent = self.db.query(User).filter(User.user_id == opponent_id).first()
-                
-                if not opponent:
+                if not challenger or not opponent:
                     continue
                 
-                # 计算结果
-                match_result = match.result.value
-                if not is_challenger:
-                    # 反转结果
-                    if match_result == "Win":
-                        match_result = "Lose"
-                    elif match_result == "Lose":
-                        match_result = "Win"
+                # 获取评分记录以获取beauty值
+                challenger_score = self.db.query(Score).filter(Score.score_id == match.challenger_score_id).first()
+                opponent_score = self.db.query(Score).filter(Score.score_id == match.opponent_score_id).first()
                 
-                # 构建记录
-                data.append({
+                challenger_beauty = float(challenger_score.feature_data.get("beauty", 0)) if challenger_score and challenger_score.feature_data else 0
+                opponent_beauty = float(opponent_score.feature_data.get("beauty", 0)) if opponent_score and opponent_score.feature_data else 0
+                
+                # 从用户视角确定结果
+                if match.challenger_id == user_id:
+                    result = match.result.value
+                    points_change = match.points_changed
+                else:
+                    # 如果用户是被挑战者，结果需要反转
+                    if match.result == MatchResult.WIN:
+                        result = MatchResult.LOSE.value
+                        points_change = 0  # 被挑战者目前不计分
+                    elif match.result == MatchResult.LOSE:
+                        result = MatchResult.WIN.value
+                        points_change = 0  # 被挑战者目前不计分
+                    else:
+                        result = MatchResult.TIE.value
+                        points_change = 0  # 被挑战者目前不计分
+                
+                # 构建对战记录
+                match_data = {
                     "match_id": match.match_id,
+                    "challenger": {
+                        "user_id": challenger.user_id,
+                        "username": challenger.username,
+                        "avatar_url": challenger.avatar_url,
+                        "score": match.challenger_score,
+                        "beauty": challenger_beauty
+                    },
                     "opponent": {
                         "user_id": opponent.user_id,
                         "username": opponent.username,
-                        "avatar_url": opponent.avatar_url
+                        "avatar_url": opponent.avatar_url,
+                        "score": match.opponent_score,
+                        "beauty": opponent_beauty
                     },
-                    "challenger_score": match.challenger_score if is_challenger else match.opponent_score,
-                    "opponent_score": match.opponent_score if is_challenger else match.challenger_score,
-                    "result": match_result,
-                    "points_change": match.points_changed if is_challenger else -match.points_changed,
+                    "result": result,
+                    "points_change": points_change,
                     "matched_at": match.matched_at
-                })
+                }
+                
+                results.append(match_data)
             
             return {
+                "success": True,
+                "data": results,
                 "total": total,
                 "page": page,
-                "limit": limit,
-                "data": data
+                "limit": limit
             }
             
         except Exception as e:
             logger.error(f"获取对战历史异常: {e}")
-            return {
-                "total": 0,
-                "page": page,
-                "limit": limit,
-                "data": []
-            }
+            return {"success": False, "error": str(e)}
     
     def get_match_by_id(self, match_id: int) -> Optional[Dict]:
         """获取对战详情"""
@@ -221,6 +257,10 @@ class MatchService:
             challenger_score = self.db.query(Score).filter(Score.score_id == match.challenger_score_id).first()
             opponent_score = self.db.query(Score).filter(Score.score_id == match.opponent_score_id).first()
             
+            # 获取beauty值
+            challenger_beauty = float(challenger_score.feature_data.get("beauty", 0)) if challenger_score and challenger_score.feature_data else 0
+            opponent_beauty = float(opponent_score.feature_data.get("beauty", 0)) if opponent_score and opponent_score.feature_data else 0
+            
             challenger_rating = challenger.elo_rating if challenger.elo_rating is not None else 1500
             
             return {
@@ -230,14 +270,16 @@ class MatchService:
                     "username": challenger.username,
                     "avatar_url": challenger.avatar_url,
                     "score": match.challenger_score,
-                    "image_url": challenger_score.image_url if challenger_score else ""
+                    "image_url": challenger_score.image_url if challenger_score else "",
+                    "beauty": challenger_beauty
                 },
                 "opponent": {
                     "user_id": opponent.user_id,
                     "username": opponent.username,
                     "avatar_url": opponent.avatar_url,
                     "score": match.opponent_score,
-                    "image_url": opponent_score.image_url if opponent_score else ""
+                    "image_url": opponent_score.image_url if opponent_score else "",
+                    "beauty": opponent_beauty
                 },
                 "result": match.result.value,
                 "points_change": match.points_changed,
